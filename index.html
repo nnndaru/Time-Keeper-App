@@ -425,10 +425,13 @@
           this.audioContext = null;
           this.customAudioBuffer = null;
           this.selectedSound = "beep";
+          this.startTime = null;
+          this.pausedTime = 0;
 
           this.initializeElements();
           this.bindEvents();
           this.updateDisplay();
+          this.setupVisibilityHandling();
         }
 
         initializeElements() {
@@ -480,6 +483,46 @@
           );
         }
 
+        setupVisibilityHandling() {
+          // Handle page visibility changes to maintain accurate timing
+          document.addEventListener("visibilitychange", () => {
+            if (this.isRunning) {
+              this.syncTimer();
+            }
+          });
+
+          // Also handle window focus/blur events as backup
+          window.addEventListener("focus", () => {
+            if (this.isRunning) {
+              this.syncTimer();
+            }
+          });
+
+          window.addEventListener("blur", () => {
+            if (this.isRunning) {
+              this.syncTimer();
+            }
+          });
+        }
+
+        syncTimer() {
+          if (!this.isRunning || !this.startTime) return;
+
+          const now = Date.now();
+          const elapsed = Math.floor((now - this.startTime) / 1000);
+          const newRemainingSeconds =
+            this.totalSeconds - elapsed - this.pausedTime;
+
+          if (newRemainingSeconds <= 0) {
+            this.remainingSeconds = 0;
+            this.complete();
+          } else {
+            this.remainingSeconds = newRemainingSeconds;
+            this.updateDisplay();
+            this.updateProgress();
+          }
+        }
+
         setTime() {
           const hours = parseInt(this.hoursInput.value) || 0;
           const minutes = parseInt(this.minutesInput.value) || 0;
@@ -487,6 +530,7 @@
 
           this.totalSeconds = hours * 3600 + minutes * 60 + seconds;
           this.remainingSeconds = this.totalSeconds;
+          this.pausedTime = 0;
 
           this.updateDisplay();
           this.updateProgress();
@@ -507,18 +551,13 @@
 
           if (this.remainingSeconds > 0) {
             this.isRunning = true;
+            this.startTime = Date.now();
             this.startBtn.textContent = "Pause";
             this.startBtn.className = "stop-btn";
 
             this.intervalId = setInterval(() => {
-              this.remainingSeconds--;
-              this.updateDisplay();
-              this.updateProgress();
-
-              if (this.remainingSeconds <= 0) {
-                this.complete();
-              }
-            }, 1000);
+              this.syncTimer();
+            }, 100); // Check more frequently for smoother updates
           }
         }
 
@@ -531,23 +570,36 @@
             clearInterval(this.intervalId);
             this.intervalId = null;
           }
+
+          // Calculate total paused time
+          if (this.startTime) {
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            this.pausedTime += elapsed;
+          }
         }
 
         stop() {
           this.pause();
           this.remainingSeconds = this.totalSeconds;
+          this.pausedTime = 0;
+          this.startTime = null;
           this.updateDisplay();
           this.updateProgress();
         }
 
         reset() {
           this.pause();
+          this.pausedTime = 0;
+          this.startTime = null;
           this.setTime();
           this.timerDisplay.classList.remove("alert");
         }
 
         complete() {
           this.pause();
+          this.remainingSeconds = 0;
+          this.updateDisplay();
+          this.updateProgress();
           this.timerDisplay.classList.add("alert");
           this.playAlert();
           this.showAlert();
